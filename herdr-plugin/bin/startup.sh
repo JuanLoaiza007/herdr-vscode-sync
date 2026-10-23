@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Herdr startup hook: refresh the folder list, then open VS Code on the
-# multi-root stub if it is not already open.
+# Open (or focus) the VS Code anchor window on the followed workspace.
+# Runs collect first so the anchor file is fresh, then opens `code <anchor>`
+# if no window is already on it.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-echo "[herdr-vscode-sync] startup" >&2
+echo "[herdr-vscode-sync] open" >&2
 
 "$PLUGIN_DIR/bin/collect.sh" || true
 
@@ -15,11 +16,10 @@ fi
 
 WS_FILE="$STATE_DIR/$WORKSPACE_FILE_NAME"
 if command -v pgrep >/dev/null 2>&1 && pgrep -f "$WS_FILE" >/dev/null 2>&1; then
-  echo "[herdr-vscode-sync] VS Code window already on $WS_FILE" >&2
+  echo "[herdr-vscode-sync] anchor window already open on $WS_FILE" >&2
   exit 0
 fi
 
-# Best effort, detached: if VS Code is already running this opens a new window
-# on the stub; otherwise it starts VS Code with the stub.
+# Best effort, detached: reuses an already running VS Code app instance.
 (code "$WS_FILE" >/dev/null 2>&1 &) || true
 echo "[herdr-vscode-sync] opened VS Code on $WS_FILE" >&2

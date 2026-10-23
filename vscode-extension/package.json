@@ -1,8 +1,8 @@
 {
   "name": "herdr-vscode-sync",
   "displayName": "Herdr VS Code Sync",
-  "description": "Mirror Herdr workspaces into a single multi-root VS Code window.",
-  "version": "0.1.0",
+  "description": "Follow the focused Herdr workspace in a VS Code window.",
+  "version": "0.2.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -19,16 +19,16 @@
     "commands": [
       {
         "command": "herdrVscodeSync.syncNow",
-        "title": "Herdr VS Code Sync: sync now"
+        "title": "Herdr VS Code Sync: follow now"
       }
     ],
     "configuration": {
       "title": "Herdr VS Code Sync",
       "properties": {
-        "herdrVscodeSync.foldersFile": {
+        "herdrVscodeSync.currentFile": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path to the `folders.json` file the Herdr plugin writes. When empty, the extension auto-discovers it under the Herdr config directory (`~/.config/herdr` on Linux/Mac, `%USERPROFILE%\\.config\\herdr` on Windows)."
+          "markdownDescription": "Absolute path to the `current.json` the Herdr plugin writes. When empty, the extension auto-discovers it under the Herdr data directory (`~/.config/herdr` / `~/.local/state/herdr` on Linux/Mac)."
         }
       }
     }

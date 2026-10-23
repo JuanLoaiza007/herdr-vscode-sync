@@ -1,54 +1,35 @@
 id = "local.herdr-vscode-sync"
 name = "Herdr VS Code Sync"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.7.0"
-description = "Mirror Herdr workspaces into a single multi-root VS Code window"
+description = "Follow the focused Herdr workspace in a VS Code window"
 platforms = ["linux", "macos"]
 
-# Manual refresh (also used to validate the pipeline):
+# Manual refresh + open:
 [[actions]]
 id = "collect"
-title = "Refresh VS Code folder list"
+title = "Write current workspace state"
 contexts = ["workspace"]
 command = ["bash", "bin/collect.sh"]
 
-# Open (or focus) the VS Code window on the workspace stub:
 [[actions]]
 id = "open"
-title = "Open VS Code sync window"
+title = "Open VS Code on the current workspace"
 contexts = ["workspace"]
 command = ["bash", "bin/startup.sh"]
 
-# After Herdr restores the session: collect + open VS Code on the workspace stub.
-# Removed by design: strictly on-demand. Only the `open` action launches VS Code.
-# [[startup]]
-# command = ["bash", "bin/startup.sh"]
-
-# Live mirror: regenerate the folder list whenever workspaces change.
-# Each event re-runs collect.sh, which rewrites folders.json; the VS Code
-# extension watches that file and reconciles the window without duplicates.
+# Follow: whenever Herdr switches focus (or a worktree lands/changes), write
+# the now-focused workspace into current.json; the VS Code extension follows.
 [[events]]
-on = "workspace.created"
-command = ["bash", "bin/collect.sh"]
-
-[[events]]
-on = "workspace.updated"
-command = ["bash", "bin/collect.sh"]
-
-[[events]]
-on = "workspace.renamed"
-command = ["bash", "bin/collect.sh"]
-
-[[events]]
-on = "workspace.moved"
-command = ["bash", "bin/collect.sh"]
-
-[[events]]
-on = "workspace.closed"
+on = "workspace.focused"
 command = ["bash", "bin/collect.sh"]
 
 [[events]]
 on = "worktree.created"
+command = ["bash", "bin/collect.sh"]
+
+[[events]]
+on = "worktree.opened"
 command = ["bash", "bin/collect.sh"]
 
 [[events]]

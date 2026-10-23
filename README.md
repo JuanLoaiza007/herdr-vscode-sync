@@ -2,22 +2,22 @@
 
 ## Idea
 
-Un puente entre [Herdr](https://herdr.dev) y Visual Studio Code: los workspaces de Herdr se reflejan **en una sola ventana** VS Code, como carpetas de un workspace multi-root.
+Un puente entre [Herdr](https://herdr.dev) y Visual Studio Code, en modo *follow*: **una** ventana de VS Code que sigue al workspace enfocado de Herdr.
 
-- Un plugin de Herdr escucha los eventos del servidor (`workspace.created`, `renamed`, `moved`, `closed`, `worktree.*`) y escribe la lista actual de proyectos en un archivo de estado (`folders.json`).
-- Una extensión de VS Code vigila ese archivo y reconcilia la ventana: añade, renombra y quita carpetas en vivo vía `workspace.updateWorkspaceFolders()`.
+- Un plugin de Herdr escribe, en cada cambio de foco (`workspace.focused`, `worktree.*`), el workspace actual en un archivo de estado (`current.json`).
+- Una extensión de VS Code vigila ese archivo y cambia la carpeta de la ventana ancla (`herdr.code-workspace`) al workspace que Herdr tiene enfocado.
 
 ## Problema que resuelve
 
-Herdr organiza el trabajo en workspaces (normalmente un proyecto por workspace). La integración habitual abre una ventana de VS Code por proyecto: con varios proyectos activos eso son muchas ventanas.
+Con varios proyectos activos, abrir una ventana de VS Code por workspace es demasiadas ventanas; sincronizar todos los workspaces en un multi-root resultó frágil (la API de carpetas de VS Code falla en silencio y en paralelo).
 
-Esto mantiene **un** workspace VS Code (archivo `.code-workspace`) abierto y sincronizado con todos los workspaces de Herdr. Cierras, creas o renombras un workspace en Herdr y la misma ventana de VS Code se actualiza sola. Nada de guardar workspaces de VS Code a mano ni decidir dónde viven: el estado lo gestiona el plugin en el directorio que Herdr asigna para el plugin.
+Este enfoque es el mínimo viable: lo único que se sincroniza es **el workspace enfocado de Herdr → la carpeta abierta en VS Code**. Cambias de workspace en Herdr y la misma ventana lo sigue. `Ctrl+B s` abre (o enfoca) esa ventana ancla.
 
 ## Requisitos
 
-- Linux o macOS (los scripts usan `bash` y `python3`; en Windows requeriría Git Bash/WSL/`python`).
+- Linux o macOS (scripts usan `bash` y `python3`; en Windows requeriría Git Bash/WSL).
 - Herdr 0.7.0 o posterior en `PATH`.
-- VS Code con el binario `code` en `PATH` (para que el plugin pueda abrir la ventana).
+- VS Code con el binario `code` en `PATH`.
 
 ## Instalación
 
@@ -25,61 +25,52 @@ Esto mantiene **un** workspace VS Code (archivo `.code-workspace`) abierto y sin
 
 ```sh
 herdr plugin link <ruta-a-este-repo>/herdr-plugin
-herdr plugin list   # verificar que aparece local.herdr-vscode-sync
 ```
 
 ### 2. Extensión de VS Code
-
-Opción A — enlace simbólico (cambios del repo se ven al recargar la ventana):
 
 ```sh
 ln -s <ruta-a-este-repo>/vscode-extension ~/.vscode/extensions/herdr-vscode-sync
 ```
 
-Opción B — copia:
+Recarga VS Code (Command Palette → *Developer: Reload Window*).
 
-```sh
-cp -r <ruta-a-este-repo>/vscode-extension ~/.vscode/extensions/herdr-vscode-sync
+### 3. Añadir el atajo (opcional) — `~/.config/herdr/config.toml`
+
+```toml
+[[keys.command]]
+key = "prefix+s"
+type = "plugin_action"
+command = "local.herdr-vscode-sync.open"
+description = "open VS Code on current workspace"
 ```
 
-Recarga VS Code (Command Palette → *Developer: Reload Window*) y abre el workspace:
-
-```sh
-# la primera vez, o cuando quieras abrir la ventana sincronizada:
-herdr plugin action invoke local.herdr-vscode-sync.collect
-code <directorio-de-estado-del-plugin>/herdr.code-workspace
-```
-
-El directorio de estado del plugin es el que Herdr inyecta (`$HERDR_PLUGIN_STATE_DIR`, típicamente `~/.local/state/herdr/plugins/local.herdr-vscode-sync`, o el equivalente del sistema). No necesitas recordarlo: el plugin lo crea solo y la extensión lo descubre.
-
-Si la extensión no encuentra el archivo de estado, fija la ruta en los ajustes de VS Code:
-
-```json
-"herdrVscodeSync.foldersFile": "/ruta/absoluta/a/folders.json"
-```
+Recarga config de Herdr (`prefix+r`). Listo: `Ctrl+B s` abre o enfoca la ventana ancla sobre el workspace actual.
 
 ## Configuración
 
-Toda la configuración vive en `config/sync.env` (con defaults inline):
+En `config/sync.env` (con defaults inline en `bin/lib.sh`):
 
 | Variable | Default | Efecto |
 | --- | --- | --- |
-| `EXCLUDE_LABELS` | `desktop,escritorio` | Workspaces cuyo label coincida (substring, sin distinguir mayúsculas) NO se reflejan. Útil para pseudo-workspaces como un "Desktop". |
-| `STATE_FILE_NAME` | `folders.json` | Nombre del archivo de lista de carpetas que vigila la extensión. |
-| `WORKSPACE_FILE_NAME` | `herdr.code-workspace` | Nombre del stub de workspace que abre VS Code. |
+| `CURRENT_FILE_NAME` | `current.json` | Archivo de estado que la extensión vigila. |
+| `WORKSPACE_FILE_NAME` | `herdr.code-workspace` | Archivo single-folder de la ventana ancla. |
+
+Si la extensión no encuentra el estado, fija la ruta en ajustes de VS Code:
+
+```json
+"herdrVscodeSync.currentFile": "/ruta/absoluta/a/current.json"
+```
 
 ## Cómo funciona el flujo
 
-1. Herdr emite un evento de workspace (crear/renombrar/mover/cerrar, o worktree).
-2. `collect.sh` lee un snapshot de sesión vía CLI (`herdr api snapshot`) y reescribe `folders.json`, tomando por cada workspace el cwd de su primer pane. Filtra labels de `EXCLUDE_LABELS`.
-3. El mismo render escribe el workspace `herdr.code-workspace` **con las carpetas ya pobladas**: abrir la ventana vía `code herdr.code-workspace` muestra los proyectos al instante, sin depender de la extensión.
-4. La extensión detecta cambios en `folders.json`, difiere contra las carpetas actuales y aplica solo lo que cambió (vía `updateWorkspaceFolders`; si VS Code lo rechaza en vivo, reescribe el workspace file y recarga la ventana).
-
-Carpetas que añadiste a mano en VS Code se conservan; la extensión solo gestiona las que ella añadió (las recuerda en `globalState`).
+1. Herdr enfoca un workspace (o un worktree aterriza/cambia) → evento → `collect.sh` lee un snapshot vía CLI y escribe `current.json` (`{path, name}` del workspace enfocado) y `herdr.code-workspace` con esa carpeta.
+2. La extensión (solo en la ventana ancla) detecta el cambio y aplica la carpeta del nuevo workspace en la misma ventana (`updateWorkspaceFolders`); si VS Code la rechaza, reescribe el archivo ancla y recarga la ventana.
+3. `Ctrl+B s` = `startup.sh`: actualiza estado y abre/enfoca la ventana ancla.
 
 ## Alcance y avisos
 
-- **Experimental — sin garantía de funcionamiento.** Prueba antes de confiar en workflows críticos.
-- Sincronización **solo Herdr → VS Code**. Cerrar una carpeta en VS Code no cierra el workspace de Herdr.
-- La ventana sincronizada debe estar abierta sobre `herdr.code-workspace` para que la extensión aplique cambios.
-- Si Herdr no está corriendo, no hay eventos; la lista se actualiza al arrancar el servidor.
+- **Experimental — sin garantía de funcionamiento.** Prueba antes de confiar en flujos críticos.
+- Sincronización **solo Herdr → VS Code** y **solo el workspace enfocado**. Nada más.
+- La extensión participa únicamente en la ventana ancla (`herdr.code-workspace`). Otras ventanas de VS Code no se tocan.
+- Cambiar de workspace cierra las pestañas del anterior en esa ventana (es un cambio de carpeta, no de pestañas).

@@ -1,15 +1,14 @@
-// herdr-vscode-sync — VS Code extension.
+// herdr-vscode-sync — VS Code extension (follow-focus).
 //
-// Watches the folders.json file the Herdr plugin writes and reconciles the
-// current multi-root window so it mirrors Herdr workspaces live.
+// Watches current.json (written by the Herdr plugin: the focused workspace)
+// and switches the ANCHOR window's folder to follow it. The anchor window is
+// the one opened on herdr.code-workspace — no other window is touched.
 //
-// Design notes:
-//  - Works only on a multi-root window (a .code-workspace file must be open).
-//  - Folders added by this extension are remembered in globalState so folders
-//    the user added manually in VS Code are never removed.
-//  - Nothing is written back to Herdr: this is Herdr -> VS Code only.
-//  - Status bar shows the current state; "Herdr VS Code Sync: Sync now" in the
-//    Command Palette re-runs the reconciliation for diagnosis.
+// Change mechanics, in order:
+//   1. workspace.updateWorkspaceFolders on the anchor (workspace-file window).
+//   2. If VS Code rejects it, rewrite herdr.code-workspace with the new folder
+//      and reload the window (deterministic fallback, never loops).
+// Nothing is written back to Herdr: this is Herdr -> VS Code only.
 'use strict';
 
 const vscode = require('vscode');
@@ -17,20 +16,19 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const STATE_FILE = 'folders.json';
-const MANAGED_KEY = 'herdrVscodeSync.managedFolders';
+const CURRENT_FILE = 'current.json';
+const ANCHOR_NAME = 'herdr.code-workspace';
+const DISCOVER_DEPTH = 5;
 
-/** @type {{managed: Set<string>, file: string|null, out: import('vscode').OutputChannel, status: import('vscode').StatusBarItem, busy: boolean, queued: boolean}} */
-let ctx = { managed: new Set(), file: null, out: null, status: null, busy: false, queued: false };
+/** @type {{file: string|null, out: import('vscode').OutputChannel, status: import('vscode').StatusBarItem, busy: boolean, queued: boolean}} */
+let ctx = { file: null, out: null, status: null, busy: false, queued: false };
 
 function normalize(p) {
   return process.platform === 'win32' ? String(p).toLowerCase() : String(p);
 }
 
 function log(...args) {
-  if (ctx.out) {
-    ctx.out.appendLine(args.map(String).join(' '));
-  }
+  if (ctx.out) ctx.out.appendLine(args.map(String).join(' '));
   console.log('[herdr-vscode-sync]', ...args);
 }
 
@@ -41,9 +39,8 @@ function setStatus(text) {
   }
 }
 
-/** Herdr data roots, derived from the environment (no hardcoded paths).
- *  State lives under XDG_STATE_HOME, config under XDG_CONFIG_HOME. */
-function herdrConfigRoots() {
+/** Herdr data roots, derived from the environment (no hardcoded paths). */
+function herdrDataRoots() {
   const home = os.homedir();
   const roots = [];
   const configHome = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
@@ -60,7 +57,7 @@ function herdrConfigRoots() {
 }
 
 function walkDir(dir, out, depth) {
-  if (depth > 5) return;
+  if (depth > DISCOVER_DEPTH) return;
   let entries = [];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -70,26 +67,21 @@ function walkDir(dir, out, depth) {
   for (const e of entries) {
     const full = path.join(dir, e.name);
     try {
-      if (e.isDirectory()) {
-        walkDir(full, out, depth + 1);
-      } else if (e.isFile() && e.name === STATE_FILE) {
-        out.push(full);
-      }
-    } catch (_) {
-      /* skip unreadable entries */
-    }
+      if (e.isDirectory()) walkDir(full, out, depth + 1);
+      else if (e.isFile() && e.name === CURRENT_FILE) out.push(full);
+    } catch (_) { /* skip unreadable entries */ }
   }
 }
 
-/** Find folders.json under the herdr data roots. */
-async function discoverFoldersFile() {
-  const explicit = vscode.workspace.getConfiguration('herdrVscodeSync').get('foldersFile');
+/** Find current.json under the herdr data roots. */
+async function discoverCurrentFile() {
+  const explicit = vscode.workspace.getConfiguration('herdrVscodeSync').get('currentFile');
   if (explicit) {
     try {
       if (fs.existsSync(explicit)) return explicit;
-    } catch (_) { /* fall through to discovery */ }
+    } catch (_) { /* fall through */ }
   }
-  for (const root of herdrConfigRoots()) {
+  for (const root of herdrDataRoots()) {
     const pluginsRoot = path.join(root, 'plugins');
     if (!fs.existsSync(pluginsRoot)) continue;
     const found = [];
@@ -99,145 +91,100 @@ async function discoverFoldersFile() {
   return null;
 }
 
-function readDesired(file) {
-  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-  return (raw.folders || [])
-    .filter((f) => f && typeof f.path === 'string' && f.path.trim())
-    .map((f) => ({ name: String(f.name || '').trim() || undefined, path: f.path }));
+function readTarget(file) {
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return { name: String(data.name || '').trim() || undefined, path: String(data.path || '').trim() };
 }
 
-/** Rewrite the current workspace file's folder list (keeps existing settings). */
-async function writeWorkspaceFile(desired) {
-  const wsFile = vscode.workspace.workspaceFile;
-  if (!wsFile) return;
+/** Rewrite the anchor workspace file with a single folder. */
+function rewriteAnchorFile(uri, target) {
   let data = { folders: [], settings: {} };
   try {
-    data = JSON.parse(fs.readFileSync(wsFile.fsPath, 'utf8'));
-  } catch (_) {
-    /* seed defaults */
-  }
+    data = JSON.parse(fs.readFileSync(uri.fsPath, 'utf8'));
+  } catch (_) { /* seed defaults */ }
   if (!Array.isArray(data.folders)) data.folders = [];
   if (!data.settings || typeof data.settings !== 'object') data.settings = {};
-  data.folders = desired.map((f) => ({ name: f.name, path: f.path }));
-  fs.writeFileSync(wsFile.fsPath, JSON.stringify(data, null, 2), 'utf8');
-  log('workspace file rewritten:', wsFile.fsPath);
+  data.folders = [{ name: target.name, path: target.path }];
+  fs.writeFileSync(uri.fsPath, JSON.stringify(data, null, 2), 'utf8');
+  log('anchor file rewritten:', uri.fsPath);
 }
 
 /**
- * Apply the desired folder list to the current window.
- * Returns a human-readable outcome describing what happened.
+ * Follow the target workspace in the anchor window.
+ * Returns a short human-readable outcome.
  */
-async function reconcile() {
-  const ws = vscode.workspace;
-
-  // updateWorkspaceFolders only exists on a workspace opened from a file.
-  if (!ws.workspaceFile) {
-    setStatus('Herdr: no .code-workspace open');
-    log('WARN: window is not on a .code-workspace file; nothing to sync here. Open the stub via `herdr plugin action invoke local.herdr-vscode-sync.open`.');
-    return 'no-workspace-file';
+async function sync() {
+  if (!ctx.file) {
+    ctx.file = await discoverCurrentFile();
+  }
+  if (!ctx.file) {
+    setStatus('Herdr: current.json no encontrado');
+    return 'no-file';
   }
 
-  let file = ctx.file;
-  if (!file) {
-    file = await discoverFoldersFile();
-    ctx.file = file;
-  }
-  if (!file) {
-    setStatus('Herdr: folders.json not found');
-    log('WARN: folders.json not found under any herdr data root.');
-    return 'no-state-file';
-  }
-  log('state file:', file);
-
-  let desired = [];
+  let target;
   try {
-    desired = readDesired(file);
+    target = readTarget(ctx.file);
   } catch (e) {
-    log('WARN: cannot parse', file, e && e.message);
-    setStatus('Herdr: estado ilegible');
+    log('cannot parse', ctx.file, e && e.message);
     return 'parse-error';
   }
 
+  const ws = vscode.workspace;
+  // Only the anchor window follows; never hijack other windows.
+  if (!ws.workspaceFile || path.basename(ws.workspaceFile.fsPath) !== ANCHOR_NAME) {
+    setStatus('Herdr: abre la ventana ancla (herdr.code-workspace)');
+    return 'not-anchor';
+  }
+  log('target:', target.path);
+
   const current = ws.workspaceFolders || [];
-  const desiredByPath = new Map(desired.map((f) => [normalize(f.path), f.name]));
-  const present = new Set(current.map((f) => normalize(f.uri.fsPath)));
-  const managed = new Set([...ctx.managed]);
-
-  // Add what Herdr has and we don't yet.
-  const additions = [];
-  for (const d of desired) {
-    const key = normalize(d.path);
-    if (!present.has(key)) {
-      additions.push({ name: d.name, uri: vscode.Uri.file(d.path) });
-      managed.add(key);
-    }
+  const currentPath = current.length ? current[0].uri.fsPath : null;
+  if (currentPath && normalize(currentPath) === normalize(target.path)) {
+    setStatus('Herdr: sigue ' + target.name);
+    return 'same';
   }
 
-  // Remove what we previously added but Herdr no longer has.
-  const deletions = [];
-  current.forEach((folder, index) => {
-    const key = normalize(folder.uri.fsPath);
-    if (managed.has(key) && !desiredByPath.has(key)) {
-      deletions.push(index);
-      managed.delete(key);
-    }
-  });
-
-  setStatus(`Herdr: ${desired.length} workspaces`);
-  if (additions.length === 0 && deletions.length === 0) {
-    log(`no change (desired=${desired.length}, current=${current.length})`);
-    return `up-to-date (${desired.length})`;
+  // 1) Swap in place (allowed on a workspace-file window).
+  const ok = await ws.updateWorkspaceFolders(0, current.length,
+    { name: target.name, uri: vscode.Uri.file(target.path) });
+  const applied =
+    ok === true &&
+    (ws.workspaceFolders || []).length === 1 &&
+    normalize(ws.workspaceFolders[0].uri.fsPath) === normalize(target.path);
+  if (applied) {
+    log('switched to', target.path);
+    setStatus('Herdr: sigue ' + target.name);
+    return 'switched';
   }
 
-  const summary = `added ${additions.length}, removed ${deletions.length}`;
+  // 2) Deterministic fallback: rewrite the anchor file, reload the window.
+  log('in-window swap returned', ok, '- rewriting anchor + reload');
   try {
-    // Delete first so indices stay valid for the additions call.
-    const ok = await ws.updateWorkspaceFolders(deletions, deletions.length, ...additions);
-    const applied = ok === true && (vscode.workspace.workspaceFolders || []).length === desired.length;
-    if (!applied) {
-      // Empty multi-root base: updateWorkspaceFolders silently no-ops. Fall back
-      // to writing the folder list into the workspace file and reloading the
-      // window. After the reload the file already matches, so this never loops.
-      log('in-window apply returned', ok, '- falling back to file rewrite + reload');
-      await writeWorkspaceFile(desired);
-      setStatus(`Herdr: ${desired.length} workspaces`);
-      vscode.commands.executeCommand('workbench.action.reloadWindow');
-      return summary + ' (reload)';
-    }
-    ctx.managed = managed;
-    await ctx.state.update(MANAGED_KEY, [...managed]);
-    log('reconciled: ' + summary);
-    // Post-state check: what does the window actually hold now?
-    const now = (ws.workspaceFolders || []).map((f) => `'${f.name}' @ ${f.uri.fsPath}`);
-    log('workspaceFile:', ws.workspaceFile && ws.workspaceFile.fsPath);
-    log('folders now (' + now.length + '):', now.join(' | '));
-    log('focused window id:', vscode.window.activeTextEditor ? 'editor' : 'no-editor');
-    setStatus(`Herdr: ${desired.length} workspaces`);
-    // Bring the Explorer into view so the folders are obviously there.
-    vscode.commands.executeCommand('workbench.view.explorer');
-    return summary;
+    rewriteAnchorFile(ws.workspaceFile, target);
   } catch (e) {
-    log('ERROR applying folders:', e && e.stack);
-    setStatus('Herdr: error al aplicar');
-    return 'apply-error: ' + (e && e.message);
+    log('anchor rewrite failed:', e && e.message);
+    return 'rewrite-fail';
   }
+  setStatus('Herdr: sigue ' + target.name);
+  vscode.commands.executeCommand('workbench.action.reloadWindow');
+  return 'reloaded';
 }
 
-/** Serialized reconcile: never let two applications of the folder list overlap,
- *  which is what made updateWorkspaceFolders silently return false. */
-async function runReconcile() {
+/** Serialized: never overlap two folder-swaps. */
+async function runSync() {
   if (ctx.busy) {
     ctx.queued = true;
     return;
   }
   ctx.busy = true;
   try {
-    await reconcile();
+    await sync();
   } finally {
     ctx.busy = false;
     if (ctx.queued) {
       ctx.queued = false;
-      setTimeout(() => runReconcile(), 50);
+      setTimeout(() => runSync(), 120);
     }
   }
 }
@@ -249,20 +196,15 @@ async function activate(context) {
   setStatus('Herdr: …');
   log('activated');
 
-  ctx.state = context.globalState;
-  ctx.managed = new Set(context.globalState.get(MANAGED_KEY) || []);
-
-  const roots = herdrConfigRoots().filter((r) => fs.existsSync(path.join(r, 'plugins')));
-  const file = await discoverFoldersFile();
+  const roots = herdrDataRoots().filter((r) => fs.existsSync(path.join(r, 'plugins')));
+  const file = await discoverCurrentFile();
   ctx.file = file;
 
   const schedule = () => {
     clearTimeout(schedule.timer);
-    schedule.timer = setTimeout(() => runReconcile(), 300);
+    schedule.timer = setTimeout(() => runSync(), 300);
   };
 
-  // Watch the exact file when it exists, plus a recursive glob under the
-  // herdr data roots to catch late creation.
   if (file) {
     const w = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(path.dirname(file), path.basename(file))
@@ -274,7 +216,7 @@ async function activate(context) {
   }
   for (const root of roots) {
     const w = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(root, '**/' + STATE_FILE)
+      new vscode.RelativePattern(root, '**/' + CURRENT_FILE)
     );
     w.onDidCreate(schedule);
     w.onDidChange(schedule);
@@ -282,24 +224,18 @@ async function activate(context) {
     context.subscriptions.push(w);
   }
 
-  // Re-check when the window regains focus: covers files that appeared while
-  // VS Code was closed or the window hidden.
   vscode.window.onDidChangeWindowState((s) => {
     if (s.focused) schedule();
   });
 
-  // Manual diagnostic entry point.
   context.subscriptions.push(
     vscode.commands.registerCommand('herdrVscodeSync.syncNow', async () => {
-      const result = await runReconcile();
-      const msg = result === 'up-to-date' || result.startsWith('added') || result.startsWith('removed')
-        ? `Sincronizado: ${result}`
-        : `Estado: ${result}`;
-      vscode.window.showInformationMessage('[Herdr Sync] ' + msg);
+      const result = await runSync();
+      vscode.window.showInformationMessage('[Herdr Sync] ' + result);
     })
   );
 
-  await runReconcile();
+  await runSync();
   log('activate finished');
 }
 

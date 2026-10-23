@@ -14,9 +14,8 @@ if [ -f "$CONFIG_FILE" ]; then
   . "$CONFIG_FILE"
   set +a
 fi
-EXCLUDE_LABELS="${EXCLUDE_LABELS:-desktop,escritorio}"
+CURRENT_FILE_NAME="${CURRENT_FILE_NAME:-current.json}"
 WORKSPACE_FILE_NAME="${WORKSPACE_FILE_NAME:-herdr.code-workspace}"
-STATE_FILE_NAME="${STATE_FILE_NAME:-folders.json}"
 
 # State dir. Herdr injects HERDR_PLUGIN_STATE_DIR at runtime; the fallback
 # below only covers manual runs outside Herdr.

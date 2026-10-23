@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Regenerate the folder list (folders.json) from the current Herdr workspaces.
-# Reads a session snapshot via the Herdr CLI, renders folders.json plus the
-# multi-root workspace stub, and exits. Safe to re-run freely; the VS Code
-# extension diffs before applying anything.
+# Write the followed-workspace state from the current Herdr session.
+# Reads a session snapshot via the Herdr CLI and renders current.json plus the
+# single-folder workspace file. Safe to re-run freely.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -14,10 +13,9 @@ if ! "$HERDR_BIN" api snapshot >"$STATE_DIR/snapshot.json" 2>/dev/null; then
 fi
 
 STATE_DIR="$STATE_DIR" \
-EXCLUDE_LABELS="$EXCLUDE_LABELS" \
+CURRENT_FILE_NAME="$CURRENT_FILE_NAME" \
 WORKSPACE_FILE_NAME="$WORKSPACE_FILE_NAME" \
-STATE_FILE_NAME="$STATE_FILE_NAME" \
-  python3 "$PLUGIN_DIR/bin/render_folders.py" \
+  python3 "$PLUGIN_DIR/bin/current.py" \
   || echo "[herdr-vscode-sync] render failed" >&2
 
 echo "[herdr-vscode-sync] collect done -> $STATE_DIR" >&2

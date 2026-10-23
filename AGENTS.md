@@ -2,43 +2,33 @@
 
 ## Contexto
 
-Idea: puente Herdr → VS Code. Los workspaces de Herdr se reflejan en una sola ventana de VS Code (multi-root). Problema que resuelve: evitar una ventana de VS Code por proyecto cuando Herdr trabaja con varios workspaces.
+Idea: puente Herdr → VS Code en modo follow. Una sola ventana de VS Code (ancla) sigue al workspace **enfocado** de Herdr. Problema que resuelve: nada de una ventana por proyecto ni de sincronizar multi-root (frágil); solo el workspace enfocado → carpeta abierta.
 
-Dirección: **solo Herdr → VS Code**. No existe sync inverso.
+Dirección: **solo Herdr → VS Code**, **solo el workspace enfocado**. Nada más se sincroniza.
 
 ## Arquitectura
 
 - `herdr-plugin/` — plugin de Herdr.
-  - `herdr-plugin.toml` — manifest: `[[startup]]`, `[[actions]]`, `[[events]]`.
-  - `bin/lib.sh` — rutas y configuración compartida (sourced).
-  - `bin/collect.sh` — lee `herdr api snapshot`, escribe estado. Ejecutado por cada evento y por la acción `collect`.
-  - `bin/render_folders.py` — transforma el snapshot: por workspace, cwd del primer pane = path de la carpeta; label del workspace = nombre. Excluye labels de `EXCLUDE_LABELS`. Escribe `folders.json` y el workspace `herdr.code-workspace` **con la lista real de carpetas** (la ventana abre poblada sin depender de la extensión).
-  - `bin/startup.sh` — al arrancar el servidor: collect + abre VS Code sobre el stub si no está abierto.
-- `vscode-extension/` — extensión VS Code (JS vanilla, sin build ni dependencias).
-  - `extension.js` — descubre `folders.json` (env-based, sin rutas fijas), vigila con FileSystemWatcher, reconcilia con `workspace.updateWorkspaceFolders()`. Si VS Code rechaza el cambio en vivo (caso base multi-root vacío), reescribe el workspace file y recarga la ventana. Recuerda carpetas auto-añadidas en `globalState` para no borrar las manuales.
-- `config/sync.env` — configuración editable. Defaults inline en `lib.sh` también.
-- `README.md` — documento público (idea, instalación, configuración, avisos).
+  - `herdr-plugin.toml` — manifest: `[[actions]]` (collect, open) y `[[events]]` (`workspace.focused`, `worktree.created/opened/removed`). Sin startup: estrictamente on-demand.
+  - `bin/lib.sh` — rutas/config compartidas (sourced). Resuelve `$HERDR_PLUGIN_STATE_DIR` o fallback portable.
+  - `bin/collect.sh` — snapshot vía `herdr api snapshot` → `bin/current.py`.
+  - `bin/current.py` — encuentra el workspace enfocado (flag `focused`, fallback `focused_workspace_id`), path = cwd del primer pane. Escribe `current.json` (`{path, name}`) y `herdr.code-workspace` single-folder.
+  - `bin/startup.sh` — collect + abre/enfoca VS Code sobre el ancla (`code <herdr.code-workspace>`) si ninguna ventana la tiene abierta.
+- `vscode-extension/` — extensión VS Code (JS vanilla, sin build).
+  - `extension.js` — descubre `current.json` (env-based), vigila con FileSystemWatcher, y en la ventana ancla aplica la carpeta: `updateWorkspaceFolders(0, n, {name, uri})`; si devuelve `false`, reescribe `herdr.code-workspace` y recarga la ventana. Serializado (nunca dos swaps solapados).
+- `config/sync.env` — `CURRENT_FILE_NAME`, `WORKSPACE_FILE_NAME`. Defaults inline en `lib.sh`.
+- `README.md` — documento público (idea, problema, instalación, configuración, avisos).
 
 ## Restricciones del repo
 
-- **Cero rutas de usuario o de máquina versionadas.** Nada de `/home/<user>`, carpetas personales, ni rutas absolutas. Todo se resuelve en runtime: `$HERDR_PLUGIN_STATE_DIR`, `$HERDR_BIN_PATH`, `$HOME`, `%USERPROFILE%`, `$XDG_CONFIG_HOME`.
-- Las rutas de estado las crea Herdr (`$HERDR_PLUGIN_STATE_DIR`) en el momento de correr; la extensión las descubre bajo el directorio de configuración de Herdr. Si se asume una ruta, debe derivarse del entorno.
-- README.md y AGENTS.md contienen únicamente: idea de la app, problema que resuelve, y cómo instalar y configurar. Sin promesas de correctitud: el proyecto es experimental.
-- El estado del plugin vive en `$HERDR_PLUGIN_STATE_DIR` (bajo `$XDG_STATE_HOME/herdr/plugins/<id>` o `$XDG_CONFIG_HOME/herdr/plugins/<id>`, según plataforma). La extensión lo descubre recorriendo ambos árboles.
+- **Cero rutas de usuario o de máquina versionadas.** Todo se resuelve en runtime: `$HERDR_PLUGIN_STATE_DIR`, `$HERDR_BIN_PATH`, `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`.
+- El estado vive en `$HERDR_PLUGIN_STATE_DIR` (bajo `$XDG_STATE_HOME/herdr/plugins/<id>` o equiva al de la plataforma). La extensión lo descubre recorriendo ambos árboles.
+- README.md y AGENTS.md contienen únicamente: idea, problema resuelto, e instalación/configuración. Sin promesas de correctitud: experimental.
+- Commits solo con archivos del propio repo.
 
-## Instalación para desarrollo en cualquier máquina
+## Cómo probar cambios
 
-```sh
-git clone <este-repo>
-herdr plugin link <repo>/herdr-plugin
-ln -s <repo>/vscode-extension ~/.vscode/extensions/herdr-vscode-sync
-# recargar VS Code; luego:
-herdr plugin action invoke local.herdr-vscode-sync.collect
-```
-
-## Probar cambios
-
-- Regenerar estado a mano: `herdr plugin action invoke local.herdr-vscode-sync.collect` (escribe `$HERDR_PLUGIN_STATE_DIR/folders.json`; el log del plugin muestra el directorio real).
-- Verificar el JSON: contener un objeto por workspace, sin los de `EXCLUDE_LABELS`.
-- Forzar evento real: crear/renombrar/cerrar un workspace con `herdr workspace create --cwd ... --label ...` y comprobar que `folders.json` cambia.
-- La reconcilación solo ocurre en una ventana abierta sobre `herdr.code-workspace` (la extensión no puede añadir carpetas sin `.code-workspace`).
+- Regenerar estado: `herdr plugin action invoke local.herdr-vscode-sync.collect` → verifica `$HERDR_PLUGIN_STATE_DIR/current.json` (debe contener el workspace enfocado actual).
+- El ancla siempre es `herdr plugin action invoke local.herdr-vscode-sync.open` (abre/enfoca la ventana ancla). La extensión solo actúa en esa ventana.
+- Simular cambio real de foco: con herdr enfocar otro workspace (`prefix+w` o `herdr workspace focus <id>`) → `current.json` cambia → la ventana ancla cambia de carpeta sin recarga manual.
+- Fallback ante `updateWorkspaceFolders=false`: la extensión reescribe `herdr.code-workspace` y recarga la ventana (registrado en el canal *Output* → "Herdr VS Code Sync").
