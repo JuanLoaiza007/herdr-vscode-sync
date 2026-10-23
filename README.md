@@ -72,8 +72,8 @@ Toda la configuración vive en `config/sync.env` (con defaults inline):
 
 1. Herdr emite un evento de workspace (crear/renombrar/mover/cerrar, o worktree).
 2. `collect.sh` lee un snapshot de sesión vía CLI (`herdr api snapshot`) y reescribe `folders.json`, tomando por cada workspace el cwd de su primer pane. Filtra labels de `EXCLUDE_LABELS`.
-3. La extensión detecta el cambio, difiere contra las carpetas actuales y aplica solo lo que cambió.
-4. En el arranque de Herdr, `startup.sh` refresca el estado y abre VS Code sobre el stub si no está abierto.
+3. El mismo render escribe el workspace `herdr.code-workspace` **con las carpetas ya pobladas**: abrir la ventana vía `code herdr.code-workspace` muestra los proyectos al instante, sin depender de la extensión.
+4. La extensión detecta cambios en `folders.json`, difiere contra las carpetas actuales y aplica solo lo que cambió (vía `updateWorkspaceFolders`; si VS Code lo rechaza en vivo, reescribe el workspace file y recarga la ventana).
 
 Carpetas que añadiste a mano en VS Code se conservan; la extensión solo gestiona las que ella añadió (las recuerda en `globalState`).
 

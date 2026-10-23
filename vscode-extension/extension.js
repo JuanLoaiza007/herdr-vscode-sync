@@ -106,6 +106,23 @@ function readDesired(file) {
     .map((f) => ({ name: String(f.name || '').trim() || undefined, path: f.path }));
 }
 
+/** Rewrite the current workspace file's folder list (keeps existing settings). */
+async function writeWorkspaceFile(desired) {
+  const wsFile = vscode.workspace.workspaceFile;
+  if (!wsFile) return;
+  let data = { folders: [], settings: {} };
+  try {
+    data = JSON.parse(fs.readFileSync(wsFile.fsPath, 'utf8'));
+  } catch (_) {
+    /* seed defaults */
+  }
+  if (!Array.isArray(data.folders)) data.folders = [];
+  if (!data.settings || typeof data.settings !== 'object') data.settings = {};
+  data.folders = desired.map((f) => ({ name: f.name, path: f.path }));
+  fs.writeFileSync(wsFile.fsPath, JSON.stringify(data, null, 2), 'utf8');
+  log('workspace file rewritten:', wsFile.fsPath);
+}
+
 /**
  * Apply the desired folder list to the current window.
  * Returns a human-readable outcome describing what happened.
@@ -175,7 +192,18 @@ async function reconcile() {
   const summary = `added ${additions.length}, removed ${deletions.length}`;
   try {
     // Delete first so indices stay valid for the additions call.
-    await ws.updateWorkspaceFolders(deletions, deletions.length, ...additions);
+    const ok = await ws.updateWorkspaceFolders(deletions, deletions.length, ...additions);
+    const applied = ok === true && (vscode.workspace.workspaceFolders || []).length === desired.length;
+    if (!applied) {
+      // Empty multi-root base: updateWorkspaceFolders silently no-ops. Fall back
+      // to writing the folder list into the workspace file and reloading the
+      // window. After the reload the file already matches, so this never loops.
+      log('in-window apply returned', ok, '- falling back to file rewrite + reload');
+      await writeWorkspaceFile(desired);
+      setStatus(`Herdr: ${desired.length} workspaces`);
+      vscode.commands.executeCommand('workbench.action.reloadWindow');
+      return summary + ' (reload)';
+    }
     ctx.managed = managed;
     await ctx.state.update(MANAGED_KEY, [...managed]);
     log('reconciled: ' + summary);

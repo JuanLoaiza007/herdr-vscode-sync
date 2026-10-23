@@ -12,10 +12,10 @@ Dirección: **solo Herdr → VS Code**. No existe sync inverso.
   - `herdr-plugin.toml` — manifest: `[[startup]]`, `[[actions]]`, `[[events]]`.
   - `bin/lib.sh` — rutas y configuración compartida (sourced).
   - `bin/collect.sh` — lee `herdr api snapshot`, escribe estado. Ejecutado por cada evento y por la acción `collect`.
-  - `bin/render_folders.py` — transforma el snapshot: por workspace, cwd del primer pane = path de la carpeta; label del workspace = nombre. Excluye labels de `EXCLUDE_LABELS`. Escribe `folders.json` + el stub `herdr.code-workspace`.
+  - `bin/render_folders.py` — transforma el snapshot: por workspace, cwd del primer pane = path de la carpeta; label del workspace = nombre. Excluye labels de `EXCLUDE_LABELS`. Escribe `folders.json` y el workspace `herdr.code-workspace` **con la lista real de carpetas** (la ventana abre poblada sin depender de la extensión).
   - `bin/startup.sh` — al arrancar el servidor: collect + abre VS Code sobre el stub si no está abierto.
 - `vscode-extension/` — extensión VS Code (JS vanilla, sin build ni dependencias).
-  - `extension.js` — descubre `folders.json` (env-based, sin rutas fijas), vigila con FileSystemWatcher, reconcilia con `workspace.updateWorkspaceFolders()`. Recuerda carpetas auto-añadidas en `globalState` para no borrar las manuales.
+  - `extension.js` — descubre `folders.json` (env-based, sin rutas fijas), vigila con FileSystemWatcher, reconcilia con `workspace.updateWorkspaceFolders()`. Si VS Code rechaza el cambio en vivo (caso base multi-root vacío), reescribe el workspace file y recarga la ventana. Recuerda carpetas auto-añadidas en `globalState` para no borrar las manuales.
 - `config/sync.env` — configuración editable. Defaults inline en `lib.sh` también.
 - `README.md` — documento público (idea, instalación, configuración, avisos).
 

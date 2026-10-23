@@ -57,9 +57,16 @@ def main() -> int:
     with open(os.path.join(STATE_DIR, STATE_FILE_NAME), "w", encoding="utf-8") as fh:
         json.dump({"folders": folders}, fh, indent=2)
 
+    # The workspace stub carries the REAL folder list so `code <stub>` opens an
+    # already-populated multi-root window (native path, no extension needed for
+    # the base state). The extension only keeps the open window in sync live.
     stub = os.path.join(STATE_DIR, WORKSPACE_FILE_NAME)
     with open(stub, "w", encoding="utf-8") as fh:
-        json.dump({"folders": [], "settings": {}}, fh, indent=2)
+        json.dump(
+            {"folders": [{"name": f["name"], "path": f["path"]} for f in folders], "settings": {}},
+            fh,
+            indent=2,
+        )
 
     return 0
 
