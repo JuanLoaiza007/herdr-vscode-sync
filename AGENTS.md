@@ -24,6 +24,7 @@ Dirección: **solo Herdr → VS Code**. No existe sync inverso.
 - **Cero rutas de usuario o de máquina versionadas.** Nada de `/home/<user>`, carpetas personales, ni rutas absolutas. Todo se resuelve en runtime: `$HERDR_PLUGIN_STATE_DIR`, `$HERDR_BIN_PATH`, `$HOME`, `%USERPROFILE%`, `$XDG_CONFIG_HOME`.
 - Las rutas de estado las crea Herdr (`$HERDR_PLUGIN_STATE_DIR`) en el momento de correr; la extensión las descubre bajo el directorio de configuración de Herdr. Si se asume una ruta, debe derivarse del entorno.
 - README.md y AGENTS.md contienen únicamente: idea de la app, problema que resuelve, y cómo instalar y configurar. Sin promesas de correctitud: el proyecto es experimental.
+- El estado del plugin vive en `$HERDR_PLUGIN_STATE_DIR` (bajo `$XDG_STATE_HOME/herdr/plugins/<id>` o `$XDG_CONFIG_HOME/herdr/plugins/<id>`, según plataforma). La extensión lo descubre recorriendo ambos árboles.
 
 ## Instalación para desarrollo en cualquier máquina
 

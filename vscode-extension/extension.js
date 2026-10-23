@@ -25,13 +25,22 @@ function normalize(p) {
   return process.platform === 'win32' ? String(p).toLowerCase() : String(p);
 }
 
-/** Herdr config roots, derived from the environment (no hardcoded paths). */
+/** Herdr data roots, derived from the environment (no hardcoded paths).
+ *  State lives under XDG_STATE_HOME, config under XDG_CONFIG_HOME. */
 function herdrConfigRoots() {
   const home = os.homedir();
+  const roots = [];
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
+  const stateHome = process.env.XDG_STATE_HOME || path.join(home, '.local', 'state');
   if (process.platform === 'win32') {
-    return [path.join(home, '.config', 'herdr'), path.join(process.env.APPDATA || home, 'herdr')];
+    roots.push(path.join(home, '.config', 'herdr'));
+    roots.push(path.join(process.env.APPDATA || home, 'herdr'));
+    roots.push(path.join(process.env.LOCALAPPDATA || home, 'herdr'));
+  } else {
+    roots.push(path.join(configHome, 'herdr'));
+    roots.push(path.join(stateHome, 'herdr'));
   }
-  return [path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'herdr')];
+  return roots;
 }
 
 function walkDir(dir, out, depth) {

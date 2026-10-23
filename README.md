@@ -50,7 +50,7 @@ herdr plugin action invoke local.herdr-vscode-sync.collect
 code <directorio-de-estado-del-plugin>/herdr.code-workspace
 ```
 
-El directorio de estado del plugin es el que Herdr inyecta (`$HERDR_PLUGIN_STATE_DIR`, bajo el directorio de configuración de Herdr, típicamente `~/.config/herdr/plugins/state/local.herdr-vscode-sync`). No necesitas recordarlo: el plugin lo crea solo y la extensión lo descubre.
+El directorio de estado del plugin es el que Herdr inyecta (`$HERDR_PLUGIN_STATE_DIR`, típicamente `~/.local/state/herdr/plugins/local.herdr-vscode-sync`, o el equivalente del sistema). No necesitas recordarlo: el plugin lo crea solo y la extensión lo descubre.
 
 Si la extensión no encuentra el archivo de estado, fija la ruta en los ajustes de VS Code:
 

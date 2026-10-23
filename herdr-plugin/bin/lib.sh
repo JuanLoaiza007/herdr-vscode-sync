@@ -23,7 +23,7 @@ STATE_FILE_NAME="${STATE_FILE_NAME:-folders.json}"
 if [ -n "${HERDR_PLUGIN_STATE_DIR:-}" ]; then
   STATE_DIR="$HERDR_PLUGIN_STATE_DIR"
 else
-  STATE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/plugins/state/${HERDR_PLUGIN_ID:-local.herdr-vscode-sync}"
+  STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/herdr/plugins/${HERDR_PLUGIN_ID:-local.herdr-vscode-sync}"
 fi
 mkdir -p "$STATE_DIR"
 
