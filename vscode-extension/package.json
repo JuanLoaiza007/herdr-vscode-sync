@@ -16,6 +16,12 @@
   ],
   "main": "./extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "herdrVscodeSync.syncNow",
+        "title": "Herdr VS Code Sync: sync now"
+      }
+    ],
     "configuration": {
       "title": "Herdr VS Code Sync",
       "properties": {
