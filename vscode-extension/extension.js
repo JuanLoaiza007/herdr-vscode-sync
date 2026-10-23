@@ -20,8 +20,8 @@ const os = require('os');
 const STATE_FILE = 'folders.json';
 const MANAGED_KEY = 'herdrVscodeSync.managedFolders';
 
-/** @type {{managed: Set<string>, file: string|null, out: import('vscode').OutputChannel, status: import('vscode').StatusBarItem}} */
-let ctx = { managed: new Set(), file: null, out: null, status: null };
+/** @type {{managed: Set<string>, file: string|null, out: import('vscode').OutputChannel, status: import('vscode').StatusBarItem, busy: boolean, queued: boolean}} */
+let ctx = { managed: new Set(), file: null, out: null, status: null, busy: false, queued: false };
 
 function normalize(p) {
   return process.platform === 'win32' ? String(p).toLowerCase() : String(p);
@@ -223,6 +223,25 @@ async function reconcile() {
   }
 }
 
+/** Serialized reconcile: never let two applications of the folder list overlap,
+ *  which is what made updateWorkspaceFolders silently return false. */
+async function runReconcile() {
+  if (ctx.busy) {
+    ctx.queued = true;
+    return;
+  }
+  ctx.busy = true;
+  try {
+    await reconcile();
+  } finally {
+    ctx.busy = false;
+    if (ctx.queued) {
+      ctx.queued = false;
+      setTimeout(() => runReconcile(), 50);
+    }
+  }
+}
+
 /** @param {vscode.ExtensionContext} context */
 async function activate(context) {
   ctx.out = vscode.window.createOutputChannel('Herdr VS Code Sync');
@@ -239,7 +258,7 @@ async function activate(context) {
 
   const schedule = () => {
     clearTimeout(schedule.timer);
-    schedule.timer = setTimeout(() => reconcile(), 300);
+    schedule.timer = setTimeout(() => runReconcile(), 300);
   };
 
   // Watch the exact file when it exists, plus a recursive glob under the
@@ -272,7 +291,7 @@ async function activate(context) {
   // Manual diagnostic entry point.
   context.subscriptions.push(
     vscode.commands.registerCommand('herdrVscodeSync.syncNow', async () => {
-      const result = await reconcile();
+      const result = await runReconcile();
       const msg = result === 'up-to-date' || result.startsWith('added') || result.startsWith('removed')
         ? `Sincronizado: ${result}`
         : `Estado: ${result}`;
@@ -280,7 +299,7 @@ async function activate(context) {
     })
   );
 
-  await reconcile();
+  await runReconcile();
   log('activate finished');
 }
 
