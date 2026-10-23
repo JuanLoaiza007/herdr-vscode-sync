@@ -12,6 +12,13 @@ title = "Refresh VS Code folder list"
 contexts = ["workspace"]
 command = ["bash", "bin/collect.sh"]
 
+# Open (or focus) the VS Code window on the workspace stub:
+[[actions]]
+id = "open"
+title = "Open VS Code sync window"
+contexts = ["workspace"]
+command = ["bash", "bin/startup.sh"]
+
 # After Herdr restores the session: collect + open VS Code on the workspace stub.
 [[startup]]
 command = ["bash", "bin/startup.sh"]
