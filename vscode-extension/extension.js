@@ -168,12 +168,22 @@ async function activate(context) {
   // Watch the exact file when it exists, plus a recursive glob under the
   // herdr plugins root to catch late creation.
   if (file) {
-    vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(path.dirname(file), path.basename(file)))
-      .onDidCreate(schedule).onDidChange(schedule).onDidDelete(schedule);
+    const w = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(path.dirname(file), path.basename(file))
+    );
+    w.onDidCreate(schedule);
+    w.onDidChange(schedule);
+    w.onDidDelete(schedule);
+    context.subscriptions.push(w);
   }
   for (const root of roots) {
-    vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(root, '**/' + STATE_FILE))
-      .onDidCreate(schedule).onDidChange(schedule).onDidDelete(schedule);
+    const w = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(root, '**/' + STATE_FILE)
+    );
+    w.onDidCreate(schedule);
+    w.onDidChange(schedule);
+    w.onDidDelete(schedule);
+    context.subscriptions.push(w);
   }
 
   await reconcile();
