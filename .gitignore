@@ -1,0 +1,11 @@
+# runtime
+node_modules/
+
+# logs
+*.log
+
+# editor cruft
+.DS_Store
+
+# local snapshot cache (written to the plugin state dir, but never hurt to ignore)
+snapshot.json

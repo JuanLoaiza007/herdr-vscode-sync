@@ -1,0 +1,48 @@
+id = "local.herdr-vscode-sync"
+name = "Herdr VS Code Sync"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Mirror Herdr workspaces into a single multi-root VS Code window"
+platforms = ["linux", "macos"]
+
+# Manual refresh (also used to validate the pipeline):
+[[actions]]
+id = "collect"
+title = "Refresh VS Code folder list"
+contexts = ["workspace"]
+command = ["bash", "bin/collect.sh"]
+
+# After Herdr restores the session: collect + open VS Code on the workspace stub.
+[[startup]]
+command = ["bash", "bin/startup.sh"]
+
+# Live mirror: regenerate the folder list whenever workspaces change.
+# Each event re-runs collect.sh, which rewrites folders.json; the VS Code
+# extension watches that file and reconciles the window without duplicates.
+[[events]]
+on = "workspace.created"
+command = ["bash", "bin/collect.sh"]
+
+[[events]]
+on = "workspace.updated"
+command = ["bash", "bin/collect.sh"]
+
+[[events]]
+on = "workspace.renamed"
+command = ["bash", "bin/collect.sh"]
+
+[[events]]
+on = "workspace.moved"
+command = ["bash", "bin/collect.sh"]
+
+[[events]]
+on = "workspace.closed"
+command = ["bash", "bin/collect.sh"]
+
+[[events]]
+on = "worktree.created"
+command = ["bash", "bin/collect.sh"]
+
+[[events]]
+on = "worktree.removed"
+command = ["bash", "bin/collect.sh"]
