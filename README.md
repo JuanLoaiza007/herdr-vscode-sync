@@ -68,6 +68,12 @@ Si la extensión no encuentra el estado, fija la ruta en ajustes de VS Code:
 2. La extensión (solo en la ventana ancla) detecta el cambio y aplica la carpeta del nuevo workspace en la misma ventana (`updateWorkspaceFolders`); si VS Code la rechaza, reescribe el archivo ancla y recarga la ventana.
 3. `Ctrl+B s` = `startup.sh`: actualiza estado y abre/enfoca la ventana ancla.
 
+## Tradeoffs del modelo follow
+
+- **La ventana ancla "carga" el workspace cada vez que Herdr cambia de foco.** La ventana no se recarga completa (cambio de carpeta en vivo vía `updateWorkspaceFolders`), pero el contenido se re-resuelve: pestañas abiertas del workspace anterior se cierran (archivos de esa carpeta dejan de estar abiertos) y el nuevo workspace arranca limpio — Explorer, editor de archivos pesados, indexing y extensiones por-workspace vuelven a cargar.
+- En el *fallback* (VS Code rechaza el cambio en vivo, raro) la ventana **se recarga entera** (`workbench.action.reloadWindow`) para asegurar el seguimiento.
+- Consecuencia de diseño aceptada a cambio de simplicidad: un solo workspace a la vez, cero sincronización multi-root, cero estado frágil. Cambiar de proyecto con frecuencia implica re-cargar el proyecto cada vez; si eso pesa, el costo son las recargas de contenido por-espacio.
+
 ## Alcance y avisos
 
 - **Experimental — sin garantía de funcionamiento.** Prueba antes de confiar en flujos críticos.
