@@ -20,8 +20,9 @@ contexts = ["workspace"]
 command = ["bash", "bin/startup.sh"]
 
 # After Herdr restores the session: collect + open VS Code on the workspace stub.
-[[startup]]
-command = ["bash", "bin/startup.sh"]
+# Removed by design: strictly on-demand. Only the `open` action launches VS Code.
+# [[startup]]
+# command = ["bash", "bin/startup.sh"]
 
 # Live mirror: regenerate the folder list whenever workspaces change.
 # Each event re-runs collect.sh, which rewrites folders.json; the VS Code
