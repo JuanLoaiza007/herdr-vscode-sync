@@ -179,7 +179,14 @@ async function reconcile() {
     ctx.managed = managed;
     await ctx.state.update(MANAGED_KEY, [...managed]);
     log('reconciled: ' + summary);
+    // Post-state check: what does the window actually hold now?
+    const now = (ws.workspaceFolders || []).map((f) => `'${f.name}' @ ${f.uri.fsPath}`);
+    log('workspaceFile:', ws.workspaceFile && ws.workspaceFile.fsPath);
+    log('folders now (' + now.length + '):', now.join(' | '));
+    log('focused window id:', vscode.window.activeTextEditor ? 'editor' : 'no-editor');
     setStatus(`Herdr: ${desired.length} workspaces`);
+    // Bring the Explorer into view so the folders are obviously there.
+    vscode.commands.executeCommand('workbench.view.explorer');
     return summary;
   } catch (e) {
     log('ERROR applying folders:', e && e.stack);
