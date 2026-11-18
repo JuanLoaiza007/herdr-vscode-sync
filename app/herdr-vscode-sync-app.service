@@ -1,0 +1,11 @@
+[Unit]
+Description=Follow the focused Herdr desktop space in VS Code
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/Documents/projects/personal/herdr-vscode-sync/app/watch-app.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

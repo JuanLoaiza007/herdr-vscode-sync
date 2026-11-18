@@ -56,6 +56,13 @@ function herdrDataRoots() {
   return roots;
 }
 
+/** Stable state dir shared by the TUI plugin and the desktop-app bridge. */
+function canonicalCurrentFile() {
+  const home = os.homedir();
+  const stateHome = process.env.XDG_STATE_HOME || path.join(home, '.local', 'state');
+  return path.join(stateHome, 'herdr-vscode-sync', CURRENT_FILE);
+}
+
 function walkDir(dir, out, depth) {
   if (depth > DISCOVER_DEPTH) return;
   let entries = [];
@@ -81,6 +88,10 @@ async function discoverCurrentFile() {
       if (fs.existsSync(explicit)) return explicit;
     } catch (_) { /* fall through */ }
   }
+  const canonical = canonicalCurrentFile();
+  try {
+    if (fs.existsSync(canonical)) return canonical;
+  } catch (_) { /* fall through */ }
   for (const root of herdrDataRoots()) {
     const pluginsRoot = path.join(root, 'plugins');
     if (!fs.existsSync(pluginsRoot)) continue;
@@ -211,9 +222,24 @@ async function activate(context) {
     );
     w.onDidCreate(schedule);
     w.onDidChange(schedule);
-    w.onDidDelete(schedule);
+    w.onDidDelete(() => { ctx.file = null; schedule(); });
     context.subscriptions.push(w);
   }
+
+  // Canonical file: may not exist yet. Watch its folder so the first write
+  // from either Herdr frontend is picked up without reloading VS Code.
+  const canonical = canonicalCurrentFile();
+  try {
+    fs.mkdirSync(path.dirname(canonical), { recursive: true });
+  } catch (_) { /* watcher still handles an existing folder */ }
+  const cw = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(path.dirname(canonical), CURRENT_FILE)
+  );
+  cw.onDidCreate(() => { ctx.file = canonical; schedule(); });
+  cw.onDidChange(() => { ctx.file = canonical; schedule(); });
+  cw.onDidDelete(() => { if (ctx.file === canonical) ctx.file = null; schedule(); });
+  context.subscriptions.push(cw);
+
   for (const root of roots) {
     const w = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(root, '**/' + CURRENT_FILE)

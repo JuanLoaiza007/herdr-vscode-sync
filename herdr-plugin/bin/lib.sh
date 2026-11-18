@@ -17,13 +17,10 @@ fi
 CURRENT_FILE_NAME="${CURRENT_FILE_NAME:-current.json}"
 WORKSPACE_FILE_NAME="${WORKSPACE_FILE_NAME:-herdr.code-workspace}"
 
-# State dir. Herdr injects HERDR_PLUGIN_STATE_DIR at runtime; the fallback
-# below only covers manual runs outside Herdr.
-if [ -n "${HERDR_PLUGIN_STATE_DIR:-}" ]; then
-  STATE_DIR="$HERDR_PLUGIN_STATE_DIR"
-else
-  STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/herdr/plugins/${HERDR_PLUGIN_ID:-local.herdr-vscode-sync}"
-fi
+# State dir. Shared by the TUI plugin and the desktop-app bridge, so the VS
+# Code extension watches one stable file. Do not use Herdr's per-plugin state
+# dir: it is not reachable from the app.
+STATE_DIR="${HERDR_VSCODE_SYNC_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herdr-vscode-sync}"
 mkdir -p "$STATE_DIR"
 
 # Herdr binary: prefer the path Herdr injects (portable across sockets/pipes).

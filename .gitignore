@@ -1,5 +1,7 @@
 # runtime
 node_modules/
+__pycache__/
+*.pyc
 
 # logs
 *.log
@@ -7,5 +9,6 @@ node_modules/
 # editor cruft
 .DS_Store
 
-# local snapshot cache (written to the plugin state dir, but never hurt to ignore)
+# local snapshot caches (written to the state dir, but never hurt to ignore)
 snapshot.json
+snapshot-app.json

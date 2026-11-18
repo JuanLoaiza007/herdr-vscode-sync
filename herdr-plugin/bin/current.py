@@ -17,11 +17,21 @@ import sys
 STATE_DIR = os.environ.get("STATE_DIR", "")
 CURRENT_FILE_NAME = os.environ.get("CURRENT_FILE_NAME", "current.json")
 WORKSPACE_FILE_NAME = os.environ.get("WORKSPACE_FILE_NAME", "herdr.code-workspace")
+SNAPSHOT_FILE = os.environ.get("SNAPSHOT_FILE", "snapshot.json")
+
+
+def write_json(name: str, data: dict) -> None:
+    """Atomic replace: VS Code may read while the TUI and the app race."""
+    path = os.path.join(STATE_DIR, name)
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    os.replace(tmp, path)
 
 
 def main() -> int:
     try:
-        with open(os.path.join(STATE_DIR, "snapshot.json"), encoding="utf-8") as fh:
+        with open(os.path.join(STATE_DIR, SNAPSHOT_FILE), encoding="utf-8") as fh:
             snap = json.load(fh)["result"]["snapshot"]
     except (OSError, KeyError, ValueError):
         return 1
@@ -41,12 +51,11 @@ def main() -> int:
 
     label = (focused.get("label") or "").strip() or os.path.basename(os.path.normpath(path))
 
-    with open(os.path.join(STATE_DIR, CURRENT_FILE_NAME), "w", encoding="utf-8") as fh:
-        json.dump({"path": path, "name": label}, fh, indent=2)
-
-    stub = os.path.join(STATE_DIR, WORKSPACE_FILE_NAME)
-    with open(stub, "w", encoding="utf-8") as fh:
-        json.dump({"folders": [{"name": label, "path": path}], "settings": {}}, fh, indent=2)
+    write_json(CURRENT_FILE_NAME, {"path": path, "name": label})
+    write_json(
+        WORKSPACE_FILE_NAME,
+        {"folders": [{"name": label, "path": path}], "settings": {}},
+    )
 
     return 0
 

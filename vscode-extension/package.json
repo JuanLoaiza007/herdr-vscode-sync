@@ -1,8 +1,8 @@
 {
   "name": "herdr-vscode-sync",
   "displayName": "Herdr VS Code Sync",
-  "description": "Follow the focused Herdr workspace in a VS Code window.",
-  "version": "0.2.0",
+  "description": "Follow the focused Herdr workspace (TUI or desktop app) in a VS Code window.",
+  "version": "0.3.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -28,7 +28,7 @@
         "herdrVscodeSync.currentFile": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path to the `current.json` the Herdr plugin writes. When empty, the extension auto-discovers it under the Herdr data directory (`~/.config/herdr` / `~/.local/state/herdr` on Linux/Mac)."
+          "markdownDescription": "Absolute path to the `current.json` that Herdr writes. When empty, the extension uses the shared state file (`~/.local/state/herdr-vscode-sync/current.json` on Linux) and falls back to the old Herdr plugin data directories (`~/.config/herdr` / `~/.local/state/herdr`)."
         }
       }
     }

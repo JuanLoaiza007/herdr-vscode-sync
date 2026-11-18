@@ -2,9 +2,10 @@
 
 ## Idea
 
-Un puente entre [Herdr](https://herdr.dev) y Visual Studio Code, en modo *follow*: **una** ventana de VS Code que sigue al workspace enfocado de Herdr.
+Un puente entre [Herdr](https://herdr.dev) y Visual Studio Code, en modo *follow*: **una** ventana de VS Code que sigue al workspace enfocado de Herdr, tanto en la TUI como en la app de escritorio.
 
-- Un plugin de Herdr escribe, en cada cambio de foco (`workspace.focused`, `worktree.*`), el workspace actual en un archivo de estado (`current.json`).
+- El plugin de la TUI escribe, en cada cambio de foco (`workspace.focused`, `worktree.*`), el workspace actual en un archivo de estado (`current.json`).
+- Un puente para la app de escritorio escribe el mismo archivo cuando su ventana está enfocada (`herdr-app ls`).
 - Una extensión de VS Code vigila ese archivo y cambia la carpeta de la ventana ancla (`herdr.code-workspace`) al workspace que Herdr tiene enfocado.
 
 ## Problema que resuelve
@@ -17,6 +18,7 @@ Este enfoque es el mínimo viable: lo único que se sincroniza es **el workspace
 
 - Linux o macOS (scripts usan `bash` y `python3`; en Windows requeriría Git Bash/WSL).
 - Herdr 0.7.0 o posterior en `PATH`.
+- Opcional: Herdr desktop (`herdr-app`) para seguir también sus spaces.
 - VS Code con el binario `code` en `PATH`.
 
 ## Instalación
@@ -35,7 +37,19 @@ ln -s <ruta-a-este-repo>/vscode-extension ~/.vscode/extensions/herdr-vscode-sync
 
 Recarga VS Code (Command Palette → *Developer: Reload Window*).
 
-### 3. Añadir el atajo (opcional) — `~/.config/herdr/config.toml`
+### 3. Puente para Herdr desktop (opcional)
+
+La app tiene otro servidor y otra API; este servicio escribe el mismo `current.json` cuando su ventana está enfocada.
+
+```sh
+systemctl --user link <ruta-a-este-repo>/app/herdr-vscode-sync-app.service
+systemctl --user daemon-reload
+systemctl --user enable --now herdr-vscode-sync-app.service
+```
+
+El puente escribe solo cuando cambia el space seleccionado en la app. Si usas TUI y app a la vez, gana el último cambio; la app no reescribe mientras su space no cambie.
+
+### 4. Añadir el atajo (opcional) — `~/.config/herdr/config.toml`
 
 ```toml
 [[keys.command]]
@@ -55,6 +69,9 @@ En `config/sync.env` (con defaults inline en `bin/lib.sh`):
 | --- | --- | --- |
 | `CURRENT_FILE_NAME` | `current.json` | Archivo de estado que la extensión vigila. |
 | `WORKSPACE_FILE_NAME` | `herdr.code-workspace` | Archivo single-folder de la ventana ancla. |
+| `HERDR_VSCODE_SYNC_STATE_DIR` | `$XDG_STATE_HOME/herdr-vscode-sync` | Directorio de estado compartido por TUI y app. |
+
+El plugin y el puente no usan el directorio de estado por-plugin de Herdr: la app no puede alcanzarlo.
 
 Si la extensión no encuentra el estado, fija la ruta en ajustes de VS Code:
 
@@ -64,9 +81,10 @@ Si la extensión no encuentra el estado, fija la ruta en ajustes de VS Code:
 
 ## Cómo funciona el flujo
 
-1. Herdr enfoca un workspace (o un worktree aterriza/cambia) → evento → `collect.sh` lee un snapshot vía CLI y escribe `current.json` (`{path, name}` del workspace enfocado) y `herdr.code-workspace` con esa carpeta.
-2. La extensión (solo en la ventana ancla) detecta el cambio y aplica la carpeta del nuevo workspace en la misma ventana (`updateWorkspaceFolders`); si VS Code la rechaza, reescribe el archivo ancla y recarga la ventana.
-3. `Ctrl+B s` = `startup.sh`: actualiza estado y abre/enfoca la ventana ancla.
+1. TUI: Herdr enfoca un workspace (o un worktree aterriza/cambia) → evento → `collect.sh` lee un snapshot vía CLI y escribe `current.json` (`{path, name}` del workspace enfocado) y `herdr.code-workspace` con esa carpeta.
+2. App: `watch-app.sh` compara cada segundo el space seleccionado; si cambió, `collect-app.sh` traduce `herdr-app ls` al mismo formato y reescribe `current.json`.
+3. La extensión (solo en la ventana ancla) detecta el cambio y aplica la carpeta del nuevo workspace en la misma ventana (`updateWorkspaceFolders`); si VS Code la rechaza, reescribe el archivo ancla y recarga la ventana.
+4. `Ctrl+B s` = `startup.sh`: actualiza estado y abre/enfoca la ventana ancla.
 
 ## Tradeoffs del modelo follow
 
