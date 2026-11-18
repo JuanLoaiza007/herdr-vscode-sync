@@ -15,7 +15,7 @@ Dirección: **solo Herdr → VS Code**, **solo el workspace enfocado**. Nada má
   - `bin/current.py` — encuentra el workspace enfocado (flag `focused`, fallback `focused_workspace_id`), path = cwd del primer pane. Escribe `current.json` (`{path, name}`) y `herdr.code-workspace` single-folder, atómicamente. Acepta `SNAPSHOT_FILE`.
   - `bin/startup.sh` — collect + abre/enfoca VS Code sobre el ancla (`code <herdr.code-workspace>`) si ninguna ventana la tiene abierta.
 - `app/` — puente para Herdr desktop.
-  - `snapshot-from-app.py` — `herdr-app ls` → snapshot con la forma que espera `current.py`; `--key` para detectar cambios.
+  - `snapshot-from-app.py` — `herdr-app ls` → snapshot con la forma que espera `current.py`; `--key` para detectar cambios. La carpeta es el cwd real de la shell de la pestaña activa (`hc get` → `foreground.cwd`, resuelto a raíz git); si falla, usa el `folder` registrado del space.
   - `collect-app.sh` — escribe `snapshot-app.json` y llama al mismo `current.py`.
   - `watch-app.sh` — poll 1 s; escribe solo cuando cambia el space seleccionado en la app.
   - `open-app.sh` — collect de la app + abre/enfoca el ancla; no debe usar `startup.sh`, que lee la TUI.
@@ -28,7 +28,7 @@ Dirección: **solo Herdr → VS Code**, **solo el workspace enfocado**. Nada má
 
 ## Restricciones del repo
 
-- **Cero rutas de usuario o de máquina versionadas.** Todo se resuelve en runtime: `$HERDR_VSCODE_SYNC_STATE_DIR`, `$HERDR_BIN_PATH`, `$HERDR_APP_BIN`, `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`.
+- **Cero rutas de usuario o de máquina versionadas.** Todo se resuelve en runtime: `$HERDR_VSCODE_SYNC_STATE_DIR`, `$HERDR_BIN_PATH`, `$HERDR_APP_BIN`, `$HC_BIN`, `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`.
 - El estado vive en `$XDG_STATE_HOME/herdr-vscode-sync` (o `$HERDR_VSCODE_SYNC_STATE_DIR`). No se usa el directorio por-plugin de Herdr: la app no lo alcanza. La extensión busca ese archivo primero y mantiene el descubrimiento antiguo como fallback.
 - README.md y AGENTS.md contienen únicamente: idea, problema resuelto, e instalación/configuración. Sin promesas de correctitud: experimental.
 - Commits solo con archivos del propio repo.

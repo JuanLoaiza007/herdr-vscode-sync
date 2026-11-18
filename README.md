@@ -86,6 +86,7 @@ En `config/sync.env` (con defaults inline en `bin/lib.sh`):
 | --- | --- | --- |
 | `CURRENT_FILE_NAME` | `current.json` | Archivo de estado que la extensión vigila. |
 | `WORKSPACE_FILE_NAME` | `herdr.code-workspace` | Archivo single-folder de la ventana ancla. |
+| `HC_BIN` | `hc` | Binario `hc` que la app usa para leer el directorio real de la terminal (si falta, se usa la carpeta registrada del space). |
 | `HERDR_VSCODE_SYNC_STATE_DIR` | `$XDG_STATE_HOME/herdr-vscode-sync` | Directorio de estado compartido por TUI y app. |
 
 El plugin y el puente no usan el directorio de estado por-plugin de Herdr: la app no puede alcanzarlo.
