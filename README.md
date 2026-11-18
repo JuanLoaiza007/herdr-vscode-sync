@@ -49,7 +49,24 @@ systemctl --user enable --now herdr-vscode-sync-app.service
 
 El puente escribe solo cuando cambia el space seleccionado en la app. Si usas TUI y app a la vez, gana el último cambio; la app no reescribe mientras su space no cambie.
 
-### 4. Añadir el atajo (opcional) — `~/.config/herdr/config.toml`
+### 4. Atajo dentro de Herdr desktop (opcional)
+
+El atajo es un comando de la app, no global del sistema. Instala el mod y el lanzador:
+
+```sh
+ln -s <ruta-a-este-repo>/app/herdr-app-mod ~/.config/herdr-app/mods/herdr-vscode-sync
+ln -s <ruta-a-este-repo>/app/open-app.sh ~/.local/bin/herdr-vscode-sync-open
+```
+
+Añade a `~/.config/herdr-app/keys.json`:
+
+```json
+{ "global": { "ctrl-shift-s": "mod.open:herdr-vscode-sync" } }
+```
+
+Conserva el resto de `keys.json`. El mod es un overlay invisible: actualiza el estado de la app y abre/enfoca la ventana ancla. Sin atajo global, sin tocar KDE.
+
+### 5. Añadir el atajo (opcional) — `~/.config/herdr/config.toml`
 
 ```toml
 [[keys.command]]

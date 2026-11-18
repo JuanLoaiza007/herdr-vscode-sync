@@ -2,7 +2,7 @@
   "name": "herdr-vscode-sync",
   "displayName": "Herdr VS Code Sync",
   "description": "Follow the focused Herdr workspace (TUI or desktop app) in a VS Code window.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {

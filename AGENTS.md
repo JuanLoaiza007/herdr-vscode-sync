@@ -18,7 +18,9 @@ Dirección: **solo Herdr → VS Code**, **solo el workspace enfocado**. Nada má
   - `snapshot-from-app.py` — `herdr-app ls` → snapshot con la forma que espera `current.py`; `--key` para detectar cambios.
   - `collect-app.sh` — escribe `snapshot-app.json` y llama al mismo `current.py`.
   - `watch-app.sh` — poll 1 s; escribe solo cuando cambia el space seleccionado en la app.
+  - `open-app.sh` — collect de la app + abre/enfoca el ancla; no debe usar `startup.sh`, que lee la TUI.
   - `herdr-vscode-sync-app.service` — unit systemd user para el watcher.
+  - `herdr-app-mod/` — mod de Herdr desktop. Overlay invisible; `mod.open:herdr-vscode-sync` ejecuta `~/.local/bin/herdr-vscode-sync-open` (symlink a `open-app.sh`). Se instala enlazado en `~/.config/herdr-app/mods/`.
 - `vscode-extension/` — extensión VS Code (JS vanilla, sin build).
   - `extension.js` — descubre `current.json` (estado canónico primero; fallback a rutas viejas de Herdr), vigila con FileSystemWatcher, y en la ventana ancla aplica la carpeta: `updateWorkspaceFolders(0, n, {name, uri})`; si devuelve `false`, reescribe `herdr.code-workspace` y recarga la ventana. Serializado (nunca dos swaps solapados).
 - `config/sync.env` — `CURRENT_FILE_NAME`, `WORKSPACE_FILE_NAME`. Defaults inline en `lib.sh`.
@@ -38,4 +40,5 @@ Dirección: **solo Herdr → VS Code**, **solo el workspace enfocado**. Nada má
 - El ancla siempre es `herdr plugin action invoke local.herdr-vscode-sync.open` (abre/enfoca la ventana ancla). La extensión solo actúa en esa ventana.
 - Simular cambio real de foco: con herdr enfocar otro workspace (`prefix+w` o `herdr workspace focus <id>`) → `current.json` cambia → la ventana ancla cambia de carpeta sin recarga manual.
 - App: cambiar de space → `watch-app.sh` reescribe `current.json`. Si TUI y app están abiertos, gana el último cambio; la app no reescribe mientras su space no cambie.
+- Atajo app: `herdr-app do mod.open --name herdr-vscode-sync` debe actualizar `current.json`, abrir/enfocar el ancla y no dejar overlays ni errores en `herdr-app status`.
 - Fallback ante `updateWorkspaceFolders=false`: la extensión reescribe `herdr.code-workspace` y recarga la ventana (registrado en el canal *Output* → "Herdr VS Code Sync").
