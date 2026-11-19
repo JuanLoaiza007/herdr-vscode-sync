@@ -5,7 +5,7 @@
 Un puente entre [Herdr](https://herdr.dev) y Visual Studio Code, en modo *follow*: **una** ventana de VS Code que sigue al workspace enfocado de Herdr, tanto en la TUI como en la app de escritorio.
 
 - El plugin de la TUI escribe, en cada cambio de foco (`workspace.focused`, `worktree.*`), el workspace actual en un archivo de estado (`current.json`).
-- Un puente para la app de escritorio escribe el mismo archivo cuando su ventana está enfocada (`herdr-app ls`).
+- Para la app de escritorio no hay puente: la propia extensión consulta `herdr-app ls`.
 - Una extensión de VS Code vigila ese archivo y cambia la carpeta de la ventana ancla (`herdr.code-workspace`) al workspace que Herdr tiene enfocado.
 
 ## Problema que resuelve
@@ -37,26 +37,17 @@ ln -s <ruta-a-este-repo>/vscode-extension ~/.vscode/extensions/herdr-vscode-sync
 
 Recarga VS Code (Command Palette → *Developer: Reload Window*).
 
-### 3. Puente para Herdr desktop (opcional)
+### 3. Herdr desktop (opcional)
 
-La app tiene otro servidor y otra API; este servicio escribe el mismo `current.json` cuando su ventana está enfocada.
+No hay servicio que instalar. La extensión consulta `herdr-app` por sí misma mientras la ventana ancla esté abierta y también cuando recibe foco.
 
-```sh
-systemctl --user link <ruta-a-este-repo>/app/herdr-vscode-sync-app.service
-systemctl --user daemon-reload
-systemctl --user enable --now herdr-vscode-sync-app.service
-```
-
-El puente escribe solo cuando cambia el space seleccionado en la app. Si usas TUI y app a la vez, gana el último cambio; la app no reescribe mientras su space no cambie.
-
-### 4. Atajo dentro de Herdr desktop (opcional)
-
-El atajo es un comando de la app, no global del sistema. Instala el mod y el lanzador:
+Instala el mod, que valida la configuración y abre VS Code:
 
 ```sh
 ln -s <ruta-a-este-repo>/app/herdr-app-mod ~/.config/herdr-app/mods/herdr-vscode-sync
-ln -s <ruta-a-este-repo>/app/open-app.sh ~/.local/bin/herdr-vscode-sync-open
 ```
+
+### 4. Atajo dentro de Herdr desktop
 
 Añade a `~/.config/herdr-app/keys.json`:
 
@@ -64,7 +55,7 @@ Añade a `~/.config/herdr-app/keys.json`:
 { "global": { "ctrl-shift-s": "mod.open:herdr-vscode-sync" } }
 ```
 
-Conserva el resto de `keys.json`. El mod es un overlay invisible: actualiza el estado de la app y abre/enfoca la ventana ancla. Sin atajo global, sin tocar KDE.
+Conserva el resto de `keys.json`. Al pulsarlo, el mod comprueba `code` y la extensión (la enlaza si falta), prepara el workspace ancla, abre o enfoca VS Code y avisa solo si arregló o no pudo arreglar algo. Sin atajo global, sin tocar KDE.
 
 ### 5. Añadir el atajo (opcional) — `~/.config/herdr/config.toml`
 
@@ -86,10 +77,12 @@ En `config/sync.env` (con defaults inline en `bin/lib.sh`):
 | --- | --- | --- |
 | `CURRENT_FILE_NAME` | `current.json` | Archivo de estado que la extensión vigila. |
 | `WORKSPACE_FILE_NAME` | `herdr.code-workspace` | Archivo single-folder de la ventana ancla. |
-| `HC_BIN` | `hc` | Binario `hc` que la app usa para leer el directorio real de la terminal (si falta, se usa la carpeta registrada del space). |
+| `HC_BIN` | `hc` | Binario `hc` para leer el directorio real de la terminal (si falta, se usa la carpeta registrada del space). |
 | `HERDR_VSCODE_SYNC_STATE_DIR` | `$XDG_STATE_HOME/herdr-vscode-sync` | Directorio de estado compartido por TUI y app. |
 
 El plugin y el puente no usan el directorio de estado por-plugin de Herdr: la app no puede alcanzarlo.
+
+Ajustes de VS Code de la extensión: `herdrVscodeSync.appBin`, `herdrVscodeSync.hcBin` (rutas a `herdr-app` / `hc` si no están en el `PATH`) y `herdrVscodeSync.pollSeconds` (`0` desactiva el poll; el foco sigue sincronizando).
 
 Si la extensión no encuentra el estado, fija la ruta en ajustes de VS Code:
 
@@ -100,7 +93,7 @@ Si la extensión no encuentra el estado, fija la ruta en ajustes de VS Code:
 ## Cómo funciona el flujo
 
 1. TUI: Herdr enfoca un workspace (o un worktree aterriza/cambia) → evento → `collect.sh` lee un snapshot vía CLI y escribe `current.json` (`{path, name}` del workspace enfocado) y `herdr.code-workspace` con esa carpeta.
-2. App: `watch-app.sh` compara cada segundo el space seleccionado; si cambió, `collect-app.sh` traduce `herdr-app ls` al mismo formato y reescribe `current.json`.
+2. App: la extensión pregunta a `herdr-app ls` cada `herdrVscodeSync.pollSeconds` (2 s) y al recibir foco la ventana; si el space seleccionado cambió, lo aplica. Decisiones en `docs/DECISIONS.md`.
 3. La extensión (solo en la ventana ancla) detecta el cambio y aplica la carpeta del nuevo workspace en la misma ventana (`updateWorkspaceFolders`); si VS Code la rechaza, reescribe el archivo ancla y recarga la ventana.
 4. `Ctrl+B s` = `startup.sh`: actualiza estado y abre/enfoca la ventana ancla.
 

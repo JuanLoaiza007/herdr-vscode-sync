@@ -2,7 +2,7 @@
   "name": "herdr-vscode-sync",
   "displayName": "Herdr VS Code Sync",
   "description": "Follow the focused Herdr workspace (TUI or desktop app) in a VS Code window.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -29,6 +29,22 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Absolute path to the `current.json` that Herdr writes. When empty, the extension uses the shared state file (`~/.local/state/herdr-vscode-sync/current.json` on Linux) and falls back to the old Herdr plugin data directories (`~/.config/herdr` / `~/.local/state/herdr`)."
+        },
+        "herdrVscodeSync.appBin": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to `herdr-app`. When empty: `$HERDR_APP_BIN`, then `PATH`, then `~/.local/bin` and `~/.local/share/herdr-app`."
+        },
+        "herdrVscodeSync.hcBin": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to `hc` (herdr-core), used to read the live directory of the space's terminal. When empty it is searched like `appBin`; without it the space's registered folder is used."
+        },
+        "herdrVscodeSync.pollSeconds": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "markdownDescription": "How often to ask Herdr desktop which space is selected while this is the anchor window. `0` disables polling: the anchor then follows only on window focus and `current.json` changes."
         }
       }
     }

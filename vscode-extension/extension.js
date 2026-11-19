@@ -9,19 +9,30 @@
 //   2. If VS Code rejects it, rewrite herdr.code-workspace with the new folder
 //      and reload the window (deterministic fallback, never loops).
 // Nothing is written back to Herdr: this is Herdr -> VS Code only.
+//
+// Two sources feed the same swap (last change wins):
+//   - current.json: written by the Herdr TUI plugin (file watcher).
+//   - Herdr desktop app: polled here via appSource.js (no service, no state
+//     file). Polled every `pollSeconds` while the anchor window exists, and
+//     forced whenever the window gains focus: that is the reliability anchor,
+//     the poll only makes the follow feel immediate.
 'use strict';
 
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { readFocusedSpace } = require('./appSource');
 
 const CURRENT_FILE = 'current.json';
 const ANCHOR_NAME = 'herdr.code-workspace';
 const DISCOVER_DEPTH = 5;
 
-/** @type {{file: string|null, out: import('vscode').OutputChannel, status: import('vscode').StatusBarItem, busy: boolean, queued: boolean}} */
-let ctx = { file: null, out: null, status: null, busy: false, queued: false };
+/** @type {{file: string|null, out: import('vscode').OutputChannel, status: import('vscode').StatusBarItem, busy: boolean, queued: boolean, source: 'file'|'app', appTarget: {path: string, name: string}|null, appKey: string, appOk: boolean, lastIssue: string}} */
+let ctx = {
+  file: null, out: null, status: null, busy: false, queued: false,
+  source: 'file', appTarget: null, appKey: '', appOk: false, lastIssue: '',
+};
 
 function normalize(p) {
   return process.platform === 'win32' ? String(p).toLowerCase() : String(p);
@@ -32,11 +43,19 @@ function log(...args) {
   console.log('[herdr-vscode-sync]', ...args);
 }
 
-function setStatus(text) {
+function setStatus(text, tooltip) {
   if (ctx.status) {
     ctx.status.text = text;
+    ctx.status.tooltip = tooltip || 'Herdr VS Code Sync: seguir ahora';
     ctx.status.show();
   }
+}
+
+/** Log a problem once per distinct message, so a 2 s poll cannot flood the log. */
+function reportIssue(message) {
+  if (ctx.lastIssue === message) return;
+  ctx.lastIssue = message;
+  log('issue:', message);
 }
 
 /** Herdr data roots, derived from the environment (no hardcoded paths). */
@@ -125,20 +144,23 @@ function rewriteAnchorFile(uri, target) {
  * Returns a short human-readable outcome.
  */
 async function sync() {
-  if (!ctx.file) {
-    ctx.file = await discoverCurrentFile();
-  }
-  if (!ctx.file) {
-    setStatus('Herdr: current.json no encontrado');
-    return 'no-file';
-  }
-
   let target;
-  try {
-    target = readTarget(ctx.file);
-  } catch (e) {
-    log('cannot parse', ctx.file, e && e.message);
-    return 'parse-error';
+  if (ctx.source === 'app' && ctx.appTarget) {
+    target = ctx.appTarget;
+  } else {
+    if (!ctx.file) {
+      ctx.file = await discoverCurrentFile();
+    }
+    if (!ctx.file) {
+      setStatus('Herdr: sin fuente', 'No hay herdr-app en ejecución ni current.json');
+      return 'no-file';
+    }
+    try {
+      target = readTarget(ctx.file);
+    } catch (e) {
+      log('cannot parse', ctx.file, e && e.message);
+      return 'parse-error';
+    }
   }
 
   const ws = vscode.workspace;
@@ -182,6 +204,43 @@ async function sync() {
   return 'reloaded';
 }
 
+function isAnchorWindow() {
+  const wf = vscode.workspace.workspaceFile;
+  return Boolean(wf && path.basename(wf.fsPath) === ANCHOR_NAME);
+}
+
+/**
+ * Ask Herdr desktop for its selected space and follow it.
+ * `force`: apply even when the space did not change (window focus).
+ * Returns true when the app answered (so the caller need not fall back to the file).
+ */
+async function refreshApp(force) {
+  if (!isAnchorWindow()) return false;
+  const cfg = vscode.workspace.getConfiguration('herdrVscodeSync');
+  const res = await readFocusedSpace({ appBin: cfg.get('appBin'), hcBin: cfg.get('hcBin') });
+  if (!res.ok) {
+    ctx.appOk = false;
+    // A missing binary is a setup problem: say so. A closed app is normal
+    // (the TUI may be in use): stay quiet and let current.json drive.
+    if (res.reason === 'no-bin') {
+      setStatus('Herdr: herdr-app no encontrado', res.detail);
+      reportIssue(res.detail);
+    } else {
+      reportIssue(res.reason + ': ' + res.detail);
+    }
+    return false;
+  }
+  ctx.appOk = true;
+  ctx.lastIssue = '';
+  const key = res.id + '\t' + res.path;
+  if (!force && key === ctx.appKey) return true;
+  ctx.appKey = key;
+  ctx.appTarget = { path: res.path, name: res.name };
+  ctx.source = 'app';
+  await runSync();
+  return true;
+}
+
 /** Serialized: never overlap two folder-swaps. */
 async function runSync() {
   if (ctx.busy) {
@@ -204,6 +263,7 @@ async function runSync() {
 async function activate(context) {
   ctx.out = vscode.window.createOutputChannel('Herdr VS Code Sync');
   ctx.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 90);
+  ctx.status.command = 'herdrVscodeSync.syncNow';
   setStatus('Herdr: …');
   log('activated');
 
@@ -213,7 +273,7 @@ async function activate(context) {
 
   const schedule = () => {
     clearTimeout(schedule.timer);
-    schedule.timer = setTimeout(() => runSync(), 300);
+    schedule.timer = setTimeout(() => { ctx.source = 'file'; runSync(); }, 300);
   };
 
   if (file) {
@@ -250,18 +310,37 @@ async function activate(context) {
     context.subscriptions.push(w);
   }
 
-  vscode.window.onDidChangeWindowState((s) => {
-    if (s.focused) schedule();
-  });
+  // Focus is the reliability anchor: whatever the poll missed is fixed here.
+  context.subscriptions.push(vscode.window.onDidChangeWindowState(async (s) => {
+    if (!s.focused) return;
+    if (!(await refreshApp(true))) schedule();
+  }));
+
+  // Light poll so a space change is followed without touching VS Code.
+  // Recursive timeout (not setInterval): a slow call can never overlap itself.
+  let stopped = false;
+  const poll = async () => {
+    if (stopped) return;
+    const secs = Number(vscode.workspace.getConfiguration('herdrVscodeSync').get('pollSeconds'));
+    try {
+      if (secs > 0) await refreshApp(false);
+    } catch (e) {
+      reportIssue('poll error: ' + (e && e.message));
+    }
+    if (!stopped) poll.timer = setTimeout(poll, Math.max(1, secs > 0 ? secs : 5) * 1000);
+  };
+  context.subscriptions.push({ dispose: () => { stopped = true; clearTimeout(poll.timer); } });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('herdrVscodeSync.syncNow', async () => {
-      const result = await runSync();
-      vscode.window.showInformationMessage('[Herdr Sync] ' + result);
+      if (!(await refreshApp(true))) await runSync();
+      vscode.window.showInformationMessage('[Herdr Sync] ' + (ctx.appOk ? 'app' : 'file') + ': ' +
+        ((ctx.status && ctx.status.text) || ''));
     })
   );
 
-  await runSync();
+  if (!(await refreshApp(true))) await runSync();
+  poll();
   log('activate finished');
 }
 
